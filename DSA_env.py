@@ -8,13 +8,16 @@ class DSA_Markov():
             n_channel,
             n_su,
             sense_error_prob_max = 0.2,
-            punish_interfer_PU = -2
+            punish_interfer_PU = -2,
+            plot_locations = False
     ):
         self.n_channel = n_channel # The number of the channels
         self.n_su = n_su # The number of the SUs
 
         # Initialize the Markov channels
         self._build_Markov_channel()
+
+        self.plot_locations_on_build = plot_locations
 
         # Initialize the locations of SUs and PUs
         self._build_location()
@@ -93,7 +96,10 @@ class DSA_Markov():
                     np.float_power(self.SU_RX_x[k1] - self.SU_TX_x[k2], 2) + np.float_power(
                         self.SU_RX_y[k1] - self.SU_TX_y[k2], 2))
 
-        # Plot the locations
+        if getattr(self, "plot_locations_on_build", False):
+            self.plot_locations()
+
+    def plot_locations(self):
         plt.plot(self.PU_TX_x, self.PU_TX_y, 'ro', label='PU_TX')
         plt.plot(self.PU_RX_x, self.PU_RX_y, 'rx', label='PU_RX')
         plt.plot(self.SU_TX_x, self.SU_TX_y, 'bs', label='SU_TX')
@@ -118,6 +124,7 @@ class DSA_Markov():
     def access(self, action):
         # action = [0, n_channel-1]: access the selected channel
         # action = n_channel: do not access the channel
+        action = np.asarray(action)
         self.success = 0
         self.fail_PU = 0
         self.fail_collision = 0
@@ -125,7 +132,6 @@ class DSA_Markov():
         self.reward = np.zeros(self.n_su)
 
         # Calculate the interference of SUs
-        Interferecne_SU = 0
         SU_sigma2 = np.float_power(10, -((41 + 22.7 * np.log10(self.SU_RX_SU_TX_d) + 20 * np.log10(self.fc / 5)) / 10))
         for k in range(self.n_su):
             SU_sigma2[k][k] = 0
@@ -134,6 +140,7 @@ class DSA_Markov():
             if (action[k] == self.n_channel): # action is not choosing any channel
                 self.reward[k] = 0
             else: # action is choosing one of channels
+                Interferecne_SU = 0
                 for q in range(self.n_su):
                     if (action[q] == action[k]):
                         Interferecne_SU = Interferecne_SU + SU_sigma2[k][q]*self.SU_power

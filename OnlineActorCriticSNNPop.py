@@ -40,6 +40,7 @@ class OnlineActorCriticSNNPop:
         threshold=0.5,
         input_scale=1.0,
         value_scale=5.0,
+        actor_output_gain=5.0,
         actor_lr=None,
         critic_lr=None,
         seed=None
@@ -64,8 +65,12 @@ class OnlineActorCriticSNNPop:
         self.threshold = float(threshold)
         self.input_scale = float(input_scale)
         self.value_scale = float(value_scale)
+        self.actor_output_gain = float(actor_output_gain)
 
         self.rng = np.random.RandomState(seed)
+        self._last_spike_count = 0.0
+        self._last_forward = None
+        self._last_action = None
 
         # Input -> hidden
         self.W_in = 0.1 * self.rng.randn(self.hidden_size, self.n_features)
@@ -167,10 +172,16 @@ class OnlineActorCriticSNNPop:
         critic_rate_neurons = c_spikes_hist.mean(axis=0)
 
         action_rates = self._decode_actor_populations(actor_rate_neurons)
-        probs = self._softmax(action_rates)
+        probs = self._softmax(self.actor_output_gain * action_rates)
 
         critic_rate = float(np.mean(critic_rate_neurons))
         value = self.value_scale * critic_rate
+        spike_count = float(
+            np.sum(x_spikes)
+            + np.sum(h_spikes_hist)
+            + np.sum(a_spikes_hist)
+            + np.sum(c_spikes_hist)
+        )
 
         return {
             "x_spikes": x_spikes,
@@ -185,6 +196,7 @@ class OnlineActorCriticSNNPop:
             "critic_rate": critic_rate,
             "probs": probs,
             "value": value,
+            "spike_count": spike_count,
             "v_h_hist": v_h_hist,
             "v_a_hist": v_a_hist,
             "v_c_hist": v_c_hist,
@@ -200,17 +212,28 @@ class OnlineActorCriticSNNPop:
 
     def choose_action(self, state):
         out = self._forward(state)
+        self._last_forward = out
+        self._last_spike_count = out["spike_count"]
         probs = out["probs"]
 
         # same convention as your other actor-critic:
         # epsilon = probability of using learned policy
         if self.rng.rand() < self.epsilon:
-            return self.rng.choice(self.n_actions, p=probs)
+            action = int(self.rng.choice(self.n_actions, p=probs))
+        else:
+            action = int(self.rng.randint(self.n_actions))
 
-        return self.rng.randint(self.n_actions)
+        self._last_action = action
+        return action
+
+    def last_spike_count(self):
+        return float(self._last_spike_count)
 
     def learn(self, state, action, reward, next_state, done=False):
-        cur = self._forward(state)
+        if self._last_forward is not None and self._last_action == int(action):
+            cur = self._last_forward
+        else:
+            cur = self._forward(state)
         nxt = self._forward(next_state)
 
         v_s = cur["value"]
@@ -269,4 +292,6 @@ class OnlineActorCriticSNNPop:
             self.W_in[h] += self.lr * hidden_signal[h] * sg_h[h] * x_rate
             self.b_h[h] += self.lr * hidden_signal[h] * sg_h[h]
 
+        self._last_forward = None
+        self._last_action = None
         return td_error
