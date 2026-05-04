@@ -8,7 +8,7 @@ The project is based on the DSA environment style from:
 
 # LLM Use Acknowledgement
 
-Portions of this code were generated using ChatGPT/Codex. All portions of code were reviewed by auther before inclusions
+Portions of this code were generated using ChatGPT/Codex. All portions of code were reviewed by author before inclusions
 
 
 ## Repository Contents
